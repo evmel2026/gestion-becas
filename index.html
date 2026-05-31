@@ -41,6 +41,9 @@ td{padding:10px 14px;color:#1e293b;border-top:1px solid #e2e8f0}
 .fade{animation:fadeUp .3s ease}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -146,13 +149,21 @@ td{padding:10px 14px;color:#1e293b;border-top:1px solid #e2e8f0}
   <div class="modal">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
       <svg width="22" height="22" fill="none" stroke="#1e3a5f" stroke-width="2" viewBox="0 0 24 24"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><circle cx="11" cy="11" r="2"/></svg>
-      <span style="font-weight:800;font-size:16px;color:#1e293b">Firma Digital</span>
+      <span style="font-weight:800;font-size:16px;color:#1e293b">Firma del Aspirante</span>
     </div>
-    <p id="firma-info" style="font-size:12px;color:#64748b;margin-bottom:16px;margin-top:4px"></p>
+    <p id="firma-info" style="font-size:12px;color:#64748b;margin-bottom:8px;margin-top:4px"></p>
+    <p style="font-size:11px;color:#7c3aed;margin-bottom:12px;font-weight:600">El aspirante debe firmar personalmente abajo</p>
     <div style="background:#f8fafc;border:2px dashed #cbd5e1;border-radius:10px;cursor:crosshair;user-select:none;touch-action:none">
       <canvas id="firma-canvas" width="420" height="160" style="width:100%;display:block;touch-action:none"></canvas>
     </div>
-    <p style="font-size:11px;color:#94a3b8;margin:6px 0 14px">Firme arriba con el dedo o el mouse</p>
+    <p style="font-size:11px;color:#94a3b8;margin:6px 0 12px">Firmá con el dedo o el mouse en el recuadro</p>
+    <div id="huella-box" style="display:none;background:#f3e8ff;border:1px solid #d8b4fe;border-radius:9px;padding:10px 12px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <svg width="18" height="18" fill="none" stroke="#7c3aed" stroke-width="2" viewBox="0 0 24 24"><path d="M12 11c0 3-1 5-1 5"/><path d="M8 14s.5-1 .5-3a3.5 3.5 0 0 1 7 0c0 .5 0 1 0 1"/><path d="M5 13a7 7 0 0 1 14 0"/><path d="M9 19s1-1 1-4a2 2 0 0 1 4 0"/></svg>
+        <span id="huella-estado" style="font-size:12px;color:#7c3aed;font-weight:600;flex:1">Confirmación con huella (opcional)</span>
+        <button onclick="pedirHuella()" id="btn-huella" style="padding:5px 12px;border-radius:7px;border:none;background:#7c3aed;color:#fff;font-size:11px;font-weight:700">Usar huella</button>
+      </div>
+    </div>
     <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
       <button class="btn-sec" onclick="cancelarFirma()">Cancelar</button>
       <button class="btn-sec" onclick="limpiarFirma()">Limpiar</button>
@@ -222,6 +233,7 @@ const puede = perm => {
   if (state.usuaria.rol === "jefa") return true;
   return ["ver","pagar","firmar","gasto","aspirantes"].includes(perm);
 };
+const puedeBorrar = () => state.usuaria && state.usuaria.rol === "jefa";
 const addAudit = (accion, detalle, tipo) => {
   const log = {id:Date.now(), usuaria:state.usuaria?.nombre||"Sistema", accion, detalle, tipo, hora:new Date().toLocaleString("es-AR")};
   state.auditoria.unshift(log);
@@ -229,7 +241,7 @@ const addAudit = (accion, detalle, tipo) => {
 };
 const aspActivos = () => state.aspirantes.filter(a => a.estado==="Activo");
 const totalPagado = () => aspActivos().reduce((s,a) => s + MESES.filter(m=>a.pagos[m.id]?.pagado).length*33000, 0);
-const totalRec5 = () => totalPagado() * 0.05;
+const totalRec5 = () => totalPagado();  // recaudado = total de becas cobradas ($33.000 por aspirante)
 const totalGastos = () => state.gastos.reduce((s,g) => s+g.monto, 0);
 const balance = () => totalRec5() - totalGastos();
 
@@ -407,7 +419,7 @@ function renderDashboard(card,bdr,txt,mut,bg2) {
   const asp = state.aspirantes;
   const activos = aspActivos();
   const cards = [
-    {label:"RECAUDADO (5%)", val:fmt(totalRec5()), color:"#1d4ed8"},
+    {label:"RECAUDADO", val:fmt(totalRec5()), color:"#1d4ed8"},
     {label:"TOTAL GASTADO",  val:fmt(totalGastos()), color:"#ef4444"},
     {label:"BALANCE",        val:fmt(balance()), color:balance()>=0?"#10b981":"#ef4444"},
     {label:"ASPIRANTES ACTIVOS", val:activos.length, color:"#7c3aed"},
@@ -440,7 +452,7 @@ function renderDashboard(card,bdr,txt,mut,bg2) {
       html += `<div style="margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
           <span style="color:${txt};font-weight:600">${m.label}</span>
-          <span style="color:${mut}">${pag}/${activos.length} · ${fmt(pag*33000*.05)}</span>
+          <span style="color:${mut}">${pag}/${activos.length} · ${fmt(pag*33000)}</span>
         </div>
         <div style="height:8px;background:${state.dark?"#334155":"#e2e8f0"};border-radius:4px">
           <div style="height:100%;width:${pct}%;background:#1d4ed8;border-radius:4px;transition:width .5s"></div>
@@ -507,7 +519,11 @@ function renderAspirantes(card,bdr,txt,mut,bg2) {
         <td style="color:${mut};font-family:monospace;font-size:12px">${a.dni}</td>
         <td><span style="background:#059669;color:#fff;padding:3px 9px;border-radius:6px;font-size:11px;font-weight:700">${a.division}</span></td>
         <td><span style="background:${a.estado==="Activo"?"#10b98120":"#ef444420"};color:${a.estado==="Activo"?"#10b981":"#ef4444"};padding:3px 9px;border-radius:6px;font-size:11px;font-weight:700">${a.estado}</span></td>
-        <td><button onclick="openDetalle(${a.id})" style="padding:5px 12px;border-radius:7px;border:1px solid ${bdr};background:transparent;color:#1d4ed8;font-size:11px;font-weight:700">Ver detalle</button></td>
+        <td><div style="display:flex;gap:5px;flex-wrap:wrap">
+          <button onclick="openDetalle(${a.id})" style="padding:5px 10px;border-radius:7px;border:1px solid ${bdr};background:transparent;color:#1d4ed8;font-size:11px;font-weight:700">Ver</button>
+          ${puede("aspirantes")?`<button onclick="editarAspirante(${a.id})" style="padding:5px 10px;border-radius:7px;border:1px solid ${bdr};background:transparent;color:#f59e0b;font-size:11px;font-weight:700">Editar</button>`:""}
+          ${puedeBorrar()?`<button onclick="borrarAspirante(${a.id})" style="padding:5px 10px;border-radius:7px;border:1px solid ${bdr};background:transparent;color:#ef4444;font-size:11px;font-weight:700">Borrar</button>`:""}
+        </div></td>
       </tr>`;
     });
     html += "</tbody></table></div></div>";
@@ -527,7 +543,7 @@ function renderBecas(card,bdr,txt,mut,bg2) {
       <div style="font-weight:800;font-size:14px;color:#1d4ed8;margin-bottom:10px">${m.label}</div>
       <div style="font-size:12px;color:${mut};margin-bottom:3px">Pagados: <b style="color:${txt}">${pag}/${activos.length}</b></div>
       <div style="font-size:12px;color:${mut};margin-bottom:3px">Firmados: <b style="color:${txt}">${fir}/${pag}</b></div>
-      <div style="font-size:12px;color:${mut}">5% recaud.: <b style="color:#10b981">${fmt(pag*33000*.05)}</b></div>
+      <div style="font-size:12px;color:${mut}">Recaudado: <b style="color:#10b981">${fmt(pag*33000)}</b></div>
       <div style="margin-top:10px;height:6px;background:${state.dark?"#334155":"#e2e8f0"};border-radius:3px">
         <div style="height:100%;width:${pct}%;background:#1d4ed8;border-radius:3px"></div>
       </div></div>`;
@@ -547,11 +563,21 @@ function renderBecas(card,bdr,txt,mut,bg2) {
     MESES.forEach(m => {
       const p = a.pagos[m.id];
       html += `<td style="text-align:center">`;
-      if (p?.pagado) html += `<svg width="14" height="14" fill="none" stroke="#10b981" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20,6 9,17 4,12"/></svg>`;
+      if (p?.pagado) {
+        // Check verde; si es jefa, clic permite deshacer el pago
+        html += puedeBorrar()
+          ? `<button onclick="deshacerPago(${a.id},'${m.id}')" title="Clic para deshacer el pago" style="background:none;border:none;cursor:pointer;padding:2px"><svg width="15" height="15" fill="none" stroke="#10b981" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20,6 9,17 4,12"/></svg></button>`
+          : `<svg width="14" height="14" fill="none" stroke="#10b981" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20,6 9,17 4,12"/></svg>`;
+      }
       else if (puede("pagar")) html += `<button onclick="marcarPago(${a.id},'${m.id}')" style="padding:3px 9px;border-radius:5px;border:1px solid ${bdr};background:transparent;font-size:10px;color:#1d4ed8;font-weight:700">Marcar</button>`;
       else html += `<span style="color:${mut};font-size:11px">—</span>`;
       html += `</td><td style="text-align:center">`;
-      if (p?.firmado) html += `<svg width="14" height="14" fill="none" stroke="#7c3aed" stroke-width="2" viewBox="0 0 24 24"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><circle cx="11" cy="11" r="2"/></svg>`;
+      if (p?.firmado) {
+        // Icono firma; si es jefa, clic permite deshacer la firma
+        html += puedeBorrar()
+          ? `<button onclick="deshacerFirma(${a.id},'${m.id}')" title="Clic para deshacer la firma" style="background:none;border:none;cursor:pointer;padding:2px"><svg width="15" height="15" fill="none" stroke="#7c3aed" stroke-width="2" viewBox="0 0 24 24"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><circle cx="11" cy="11" r="2"/></svg></button>`
+          : `<svg width="14" height="14" fill="none" stroke="#7c3aed" stroke-width="2" viewBox="0 0 24 24"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><circle cx="11" cy="11" r="2"/></svg>`;
+      }
       else if (p?.pagado && puede("firmar")) html += `<button onclick="openFirma(${a.id},'${m.id}')" style="padding:3px 9px;border-radius:5px;border:1px solid ${bdr};background:transparent;font-size:10px;color:#7c3aed;font-weight:700">Firmar</button>`;
       else html += `<span style="color:${mut};font-size:11px">—</span>`;
       html += `</td>`;
@@ -588,7 +614,7 @@ function renderGastos(card,bdr,txt,mut,bg2) {
   } else {
     html += `<div style="background:${card};border-radius:14px;border:1px solid ${bdr};overflow:hidden"><div style="overflow-x:auto">
       <table><thead><tr style="background:${bg2}">
-        ${["Descripción","Categoría","Monto","Fecha","N° Factura","Por"].map(h=>`<th style="color:${mut}">${h}</th>`).join("")}
+        ${["Descripción","Categoría","Monto","Fecha","N° Factura","Por","Acciones"].map(h=>`<th style="color:${mut}">${h}</th>`).join("")}
       </tr></thead><tbody>`;
     [...state.gastos].reverse().forEach(g => {
       html += `<tr>
@@ -598,6 +624,10 @@ function renderGastos(card,bdr,txt,mut,bg2) {
         <td style="color:${mut}">${g.fecha}</td>
         <td style="color:${mut};font-family:monospace;font-size:12px">${g.factura||"—"}</td>
         <td style="color:${mut};font-size:12px">${g.creadoPor}</td>
+        <td><div style="display:flex;gap:5px;flex-wrap:wrap">
+          ${puede("gasto")?`<button onclick="editarGasto(${g.id})" style="padding:5px 10px;border-radius:7px;border:1px solid ${bdr};background:transparent;color:#f59e0b;font-size:11px;font-weight:700">Editar</button>`:""}
+          ${puedeBorrar()?`<button onclick="borrarGasto(${g.id})" style="padding:5px 10px;border-radius:7px;border:1px solid ${bdr};background:transparent;color:#ef4444;font-size:11px;font-weight:700">Borrar</button>`:""}
+        </div></td>
       </tr>`;
     });
     html += "</tbody></table></div></div>";
@@ -646,7 +676,7 @@ function renderFirmas(card,bdr,txt,mut,bg2) {
     html += `<div style="background:${card};border-radius:14px;border:1px solid ${bdr};overflow:hidden">
       <div style="padding:13px 16px;border-bottom:1px solid ${bdr};font-weight:700;color:${txt}">Firmas Registradas</div>
       <div style="overflow-x:auto"><table><thead><tr style="background:${bg2}">
-        ${["Aspirante","Mes","Fecha","Hora","Firmado por"].map(h=>`<th style="color:${mut}">${h}</th>`).join("")}
+        ${["Aspirante","Mes","Fecha","Hora","Huella","Comprobante"].map(h=>`<th style="color:${mut}">${h}</th>`).join("")}
       </tr></thead><tbody>`;
     firmados.forEach(r => {
       html += `<tr>
@@ -654,7 +684,8 @@ function renderFirmas(card,bdr,txt,mut,bg2) {
         <td style="color:${txt}">${r.mes.label}</td>
         <td style="color:${mut}">${r.pago.fechaFirma}</td>
         <td style="color:${mut}">${r.pago.horaFirma}</td>
-        <td style="color:${mut};font-size:12px">${r.pago.firmadoPor}</td>
+        <td>${r.pago.conHuella?`<span style="background:#7c3aed20;color:#7c3aed;padding:2px 7px;border-radius:5px;font-size:10px;font-weight:700">✓ Huella</span>`:`<span style="color:${mut};font-size:11px">—</span>`}</td>
+        <td><button onclick="verFirma(${r.asp.id},'${r.mes.id}')" style="padding:5px 12px;border-radius:7px;border:1px solid ${bdr};background:transparent;color:#7c3aed;font-size:11px;font-weight:700">Ver firma</button></td>
       </tr>`;
     });
     html += "</tbody></table></div></div>";
@@ -674,7 +705,7 @@ function renderReportes(card,bdr,txt,mut,bg2) {
     {l:"Aspirantes activos",v:activos.length},
     {l:"Total becas período",v:fmt(activos.length*3*33000)},
     {l:"Total cobrado",v:fmt(totalPagado())},
-    {l:"5% recaudado",v:fmt(totalRec5()),hl:true,g:true},
+    {l:"Total recaudado",v:fmt(totalRec5()),hl:true,g:true},
     {l:"Total gastos",v:fmt(totalGastos())},
     {l:"Balance",v:fmt(bal),hl:true,g:bal>=0},
   ].forEach(it => {
@@ -685,13 +716,13 @@ function renderReportes(card,bdr,txt,mut,bg2) {
   });
   html += `</div></div>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px">`;
-  [{t:"Reporte de Becas",d:"Pagos y firmas del período",c:"#1d4ed8"},{t:"Reporte Financiero",d:"Ingresos, egresos y balance",c:"#10b981"},{t:"Listado de Aspirantes",d:"Padrón completo con estados",c:"#7c3aed"},{t:"Comprobantes de Firma",d:"PDFs con firmas digitales",c:"#f59e0b"}].forEach(r => {
+  [{t:"Reporte de Becas",d:"Pagos y firmas del período",c:"#1d4ed8",tipo:"becas"},{t:"Reporte Financiero",d:"Ingresos, egresos y balance",c:"#10b981",tipo:"financiero"},{t:"Listado de Aspirantes",d:"Padrón completo con estados",c:"#7c3aed",tipo:"aspirantes"},{t:"Lista de Gastos",d:"Detalle de todos los gastos",c:"#f59e0b",tipo:"gastos"}].forEach(r => {
     html += `<div style="background:${card};border-radius:14px;border:1px solid ${bdr};padding:18px">
       <div style="font-weight:700;color:${txt};margin-bottom:4px">${r.t}</div>
       <div style="font-size:12px;color:${mut};margin-bottom:14px">${r.d}</div>
       <div style="display:flex;gap:8px">
-        <button style="flex:1;padding:8px;border-radius:7px;border:1px solid ${bdr};background:transparent;font-size:11px;font-weight:700;color:#ef4444">⬇ PDF</button>
-        <button style="flex:1;padding:8px;border-radius:7px;border:1px solid ${bdr};background:transparent;font-size:11px;font-weight:700;color:#10b981">⬇ Excel</button>
+        <button onclick="exportarPDF('${r.tipo}')" style="flex:1;padding:8px;border-radius:7px;border:1px solid ${bdr};background:transparent;font-size:11px;font-weight:700;color:#ef4444;cursor:pointer">⬇ PDF</button>
+        <button onclick="exportarExcel('${r.tipo}')" style="flex:1;padding:8px;border-radius:7px;border:1px solid ${bdr};background:transparent;font-size:11px;font-weight:700;color:#10b981;cursor:pointer">⬇ Excel</button>
       </div>
     </div>`;
   });
@@ -729,6 +760,34 @@ function marcarPago(aspId, mesId) {
   if (!a) return;
   a.pagos[mesId] = {...a.pagos[mesId], pagado:true, fechaPago:hoy()};
   addAudit("Pago registrado", `${a.apellido}, ${a.nombre} · ${mesId}`, "pay");
+  guardarAspiranteSupa(a);
+  renderContent();
+}
+
+function deshacerPago(aspId, mesId) {
+  if (!puedeBorrar()) return;
+  const a = state.aspirantes.find(x=>x.id===aspId);
+  if (!a) return;
+  const mes = MESES.find(m=>m.id===mesId);
+  const ok = confirm(`¿Deshacer el PAGO de ${a.apellido}, ${a.nombre} (${mes.label})?\n\nTambién se borrará la firma si la tiene.`);
+  if (!ok) return;
+  // Al deshacer el pago, también se quita la firma (no puede haber firma sin pago)
+  a.pagos[mesId] = {pagado:false, firmado:false};
+  addAudit("Deshizo pago", `${a.apellido}, ${a.nombre} · ${mesId}`, "delete");
+  guardarAspiranteSupa(a);
+  renderContent();
+}
+
+function deshacerFirma(aspId, mesId) {
+  if (!puedeBorrar()) return;
+  const a = state.aspirantes.find(x=>x.id===aspId);
+  if (!a) return;
+  const mes = MESES.find(m=>m.id===mesId);
+  const ok = confirm(`¿Deshacer la FIRMA de ${a.apellido}, ${a.nombre} (${mes.label})?\n\nEl pago se mantiene.`);
+  if (!ok) return;
+  // Quitar solo la firma, mantener el pago
+  a.pagos[mesId] = {...a.pagos[mesId], firmado:false, firma:null, fechaFirma:null, horaFirma:null, firmadoPor:null, conHuella:false};
+  addAudit("Deshizo firma", `${a.apellido}, ${a.nombre} · ${mesId}`, "delete");
   guardarAspiranteSupa(a);
   renderContent();
 }
@@ -771,6 +830,69 @@ function guardarAsp() {
   closeModal();
   renderContent();
 }
+
+// ── EDITAR ASPIRANTE ──
+function editarAspirante(aspId) {
+  const a = state.aspirantes.find(x=>x.id===aspId);
+  if (!a) return;
+  const d = state.dark;
+  const bdr = d?"#334155":"#e2e8f0";
+  const txt = d?"#f1f5f9":"#1e293b";
+  const mut = d?"#94a3b8":"#64748b";
+  const bg2 = d?"#0f172a":"#f8fafc";
+  document.getElementById("modal-gen-content").innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <span style="font-weight:800;font-size:16px;color:${txt}">Editar Aspirante</span>
+      <button onclick="closeModal()" style="background:none;border:none;font-size:20px;color:${mut};cursor:pointer">✕</button>
+    </div>
+    <style>.einp{width:100%;padding:10px 12px;border-radius:9px;border:1.5px solid ${bdr};background:${bg2};color:${txt};font-size:13px;outline:none;box-sizing:border-box;margin-bottom:13px}.elbl{display:block;font-size:11px;color:${mut};margin-bottom:5px;font-weight:700}</style>
+    <label class="elbl">APELLIDO/S *</label><input class="einp" id="easp-apellido" value="${a.apellido}"/>
+    <label class="elbl">NOMBRE/S *</label><input class="einp" id="easp-nombre" value="${a.nombre}"/>
+    <label class="elbl">DNI *</label><input class="einp" id="easp-dni" value="${a.dni}"/>
+    <label class="elbl">SECCIÓN *</label>
+    <select class="einp" id="easp-div">${SECCIONES.map(s=>`<option value="${s}" ${a.division===s?"selected":""}>Sección ${s}</option>`).join("")}</select>
+    <label class="elbl">ESTADO *</label>
+    <select class="einp" id="easp-estado">
+      <option value="Activo" ${a.estado==="Activo"?"selected":""}>Activo</option>
+      <option value="Inactivo" ${a.estado==="Inactivo"?"selected":""}>Inactivo</option>
+    </select>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+      <button class="btn-sec" onclick="closeModal()">Cancelar</button>
+      <button class="btn-pri" onclick="guardarEdicionAsp(${aspId})">Guardar Cambios</button>
+    </div>`;
+  document.getElementById("modal-gen").style.display = "flex";
+}
+
+function guardarEdicionAsp(aspId) {
+  const a = state.aspirantes.find(x=>x.id===aspId);
+  if (!a) return;
+  const ap = document.getElementById("easp-apellido").value.trim();
+  const n = document.getElementById("easp-nombre").value.trim();
+  const dni = document.getElementById("easp-dni").value.trim();
+  const div = document.getElementById("easp-div").value;
+  const estado = document.getElementById("easp-estado").value;
+  if (!n||!ap||!dni) { alert("Completá todos los campos obligatorios"); return; }
+  // Verificar que el DNI no esté repetido en OTRO aspirante
+  if (state.aspirantes.find(x=>x.dni===dni && x.id!==aspId)) { alert("Ya existe otro aspirante con ese DNI"); return; }
+  a.apellido = ap; a.nombre = n; a.dni = dni; a.division = div; a.estado = estado;
+  addAudit("Editó aspirante", `${ap}, ${n} · DNI ${dni}`, "edit");
+  guardarAspiranteSupa(a);
+  closeModal();
+  renderContent();
+}
+
+// ── BORRAR ASPIRANTE (solo Jefa) ──
+function borrarAspirante(aspId) {
+  if (!puedeBorrar()) { alert("Solo la Jefa puede borrar registros."); return; }
+  const a = state.aspirantes.find(x=>x.id===aspId);
+  if (!a) return;
+  const ok = confirm(`¿Seguro que querés BORRAR al aspirante?\n\n${a.apellido}, ${a.nombre} (DNI ${a.dni})\n\nEsta acción no se puede deshacer.`);
+  if (!ok) return;
+  state.aspirantes = state.aspirantes.filter(x=>x.id!==aspId);
+  addAudit("Borró aspirante", `${a.apellido}, ${a.nombre} · DNI ${a.dni}`, "delete");
+  borrarAspiranteSupa(aspId);
+  renderContent();
+}
 function openDetalle(aspId) {
   const a = state.aspirantes.find(x=>x.id===aspId);
   if (!a) return;
@@ -798,8 +920,9 @@ function openDetalle(aspId) {
     html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:13px 14px;border:1px solid ${bdr};border-radius:10px;margin-bottom:8px">
       <div>
         <div style="font-weight:700;color:${txt};font-size:14px">${m.label}</div>
-        <div style="font-size:11px;color:${mut};margin-top:2px">Beca: $33.000 · 5%: $1.650</div>
-        ${p?.fechaFirma?`<div style="font-size:11px;color:#7c3aed;margin-top:2px">Firmado ${p.fechaFirma} ${p.horaFirma} por ${p.firmadoPor}</div>`:""}
+        <div style="font-size:11px;color:${mut};margin-top:2px">Beca mensual: $33.000</div>
+        ${p?.fechaFirma?`<div style="font-size:11px;color:#7c3aed;margin-top:2px">Firmado ${p.fechaFirma} ${p.horaFirma}</div>`:""}
+        ${p?.firma?`<button onclick="verFirma(${aspId},'${m.id}')" style="margin-top:4px;padding:3px 10px;border-radius:6px;border:1px solid #7c3aed;background:transparent;color:#7c3aed;font-size:10px;font-weight:700">Ver firma</button>`:""}
       </div>
       <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
         <span style="font-size:10px;padding:3px 8px;border-radius:5px;background:${p?.pagado?"#10b98120":"#ef444420"};color:${p?.pagado?"#10b981":"#ef4444"};font-weight:700">${p?.pagado?"✓ PAGADO":"PENDIENTE"}</span>
@@ -851,6 +974,63 @@ function guardarGasto() {
   renderContent();
 }
 
+// ── EDITAR GASTO ──
+function editarGasto(gastoId) {
+  const g = state.gastos.find(x=>x.id===gastoId);
+  if (!g) return;
+  const d = state.dark;
+  const bdr = d?"#334155":"#e2e8f0";
+  const txt = d?"#f1f5f9":"#1e293b";
+  const mut = d?"#94a3b8":"#64748b";
+  const bg2 = d?"#0f172a":"#f8fafc";
+  document.getElementById("modal-gen-content").innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <span style="font-weight:800;font-size:16px;color:${txt}">Editar Gasto</span>
+      <button onclick="closeModal()" style="background:none;border:none;font-size:20px;color:${mut};cursor:pointer">✕</button>
+    </div>
+    <style>.eginp{width:100%;padding:10px 12px;border-radius:9px;border:1.5px solid ${bdr};background:${bg2};color:${txt};font-size:13px;outline:none;box-sizing:border-box;margin-bottom:12px}.eglbl{display:block;font-size:11px;color:${mut};margin-bottom:5px;font-weight:700}</style>
+    <label class="eglbl">Descripción *</label><input class="eginp" id="eg-desc" value="${(g.desc||'').replace(/"/g,'&quot;')}"/>
+    <label class="eglbl">Monto $ *</label><input class="eginp" id="eg-monto" type="number" value="${g.monto}"/>
+    <label class="eglbl">Fecha *</label><input class="eginp" id="eg-fecha" type="date" value="${g.fecha}"/>
+    <label class="eglbl">N° Factura</label><input class="eginp" id="eg-factura" value="${(g.factura||'').replace(/"/g,'&quot;')}"/>
+    <label class="eglbl">Categoría</label>
+    <select class="eginp" id="eg-cat">${CATEGORIAS.map(c=>`<option value="${c}" ${g.cat===c?"selected":""}>${c}</option>`).join("")}</select>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+      <button class="btn-sec" onclick="closeModal()">Cancelar</button>
+      <button class="btn-pri" onclick="guardarEdicionGasto(${gastoId})">Guardar Cambios</button>
+    </div>`;
+  document.getElementById("modal-gen").style.display = "flex";
+}
+
+function guardarEdicionGasto(gastoId) {
+  const g = state.gastos.find(x=>x.id===gastoId);
+  if (!g) return;
+  const desc = document.getElementById("eg-desc").value.trim();
+  const monto = Number(document.getElementById("eg-monto").value);
+  const fecha = document.getElementById("eg-fecha").value;
+  if (!desc||!monto||!fecha) { alert("Completá los campos obligatorios"); return; }
+  g.desc = desc; g.monto = monto; g.fecha = fecha;
+  g.factura = document.getElementById("eg-factura").value.trim();
+  g.cat = document.getElementById("eg-cat").value;
+  addAudit("Editó gasto", `${fmt(monto)} · ${g.cat}`, "edit");
+  guardarGastoSupa(g);
+  closeModal();
+  renderContent();
+}
+
+// ── BORRAR GASTO (solo Jefa) ──
+function borrarGasto(gastoId) {
+  if (!puedeBorrar()) { alert("Solo la Jefa puede borrar registros."); return; }
+  const g = state.gastos.find(x=>x.id===gastoId);
+  if (!g) return;
+  const ok = confirm(`¿Seguro que querés BORRAR este gasto?\n\n${g.desc} — ${fmt(g.monto)}\n\nEsta acción no se puede deshacer.`);
+  if (!ok) return;
+  state.gastos = state.gastos.filter(x=>x.id!==gastoId);
+  addAudit("Borró gasto", `${g.desc} · ${fmt(g.monto)}`, "delete");
+  borrarGastoSupa(gastoId);
+  renderContent();
+}
+
 // ── ESCANEO ──────────────────────────────────────────────────────
 function openEscaneo() {
   const d = state.dark;
@@ -899,8 +1079,18 @@ function openFirma(aspId, mesId) {
   const mes = MESES.find(m=>m.id===mesId);
   if (!a||!mes) return;
   document.getElementById("firma-info").innerHTML = `<b>${a.apellido}, ${a.nombre}</b> · DNI ${a.dni} · ${mes.label}`;
-  state.firma = {aspId, mesId, dibujo:false, tieneFirma:false};
+  state.firma = {aspId, mesId, dibujo:false, tieneFirma:false, conHuella:false};
   document.getElementById("modal-firma").style.display = "flex";
+  // Mostrar opción de huella solo si el dispositivo la soporta
+  const huellaBox = document.getElementById("huella-box");
+  if (window.PublicKeyCredential) {
+    huellaBox.style.display = "block";
+    document.getElementById("huella-estado").textContent = "Confirmación con huella (opcional)";
+    document.getElementById("huella-estado").style.color = "#7c3aed";
+    document.getElementById("btn-huella").style.display = "inline-block";
+  } else {
+    huellaBox.style.display = "none";
+  }
   // setup canvas
   const cvs = document.getElementById("firma-canvas");
   const ctx = cvs.getContext("2d");
@@ -926,6 +1116,40 @@ function limpiarFirma() {
   document.getElementById("btn-confirmar-firma").style.background="#cbd5e1";
 }
 function cancelarFirma() { document.getElementById("modal-firma").style.display="none"; }
+
+async function pedirHuella() {
+  const estado = document.getElementById("huella-estado");
+  const btn = document.getElementById("btn-huella");
+  try {
+    estado.textContent = "Esperando huella…";
+    // Genera un desafío aleatorio para la verificación biométrica
+    const challenge = new Uint8Array(32);
+    window.crypto.getRandomValues(challenge);
+    await navigator.credentials.create({
+      publicKey: {
+        challenge: challenge,
+        rp: { name: "DCFyCCCO Becas" },
+        user: {
+          id: new Uint8Array(16),
+          name: "aspirante",
+          displayName: "Aspirante"
+        },
+        pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+        authenticatorSelection: { userVerification: "required" },
+        timeout: 30000
+      }
+    });
+    // Si llegó acá, la huella se verificó
+    state.firma.conHuella = true;
+    estado.textContent = "✓ Huella verificada";
+    estado.style.color = "#10b981";
+    btn.style.display = "none";
+  } catch(err) {
+    console.error("Huella:", err);
+    estado.textContent = "No se pudo leer la huella (podés firmar igual)";
+    estado.style.color = "#ef4444";
+  }
+}
 function confirmarFirma() {
   if (!state.firma.tieneFirma) return;
   const cvs = document.getElementById("firma-canvas");
@@ -933,12 +1157,54 @@ function confirmarFirma() {
   const {aspId, mesId} = state.firma;
   const a = state.aspirantes.find(x=>x.id===aspId);
   if (!a) return;
-  a.pagos[mesId] = {...a.pagos[mesId], firmado:true, firma:img, fechaFirma:hoy(), horaFirma:ahora(), firmadoPor:state.usuaria.nombre};
-  addAudit("Firma digital", `${a.apellido}, ${a.nombre} · ${mesId}`, "sign");
+  a.pagos[mesId] = {
+    ...a.pagos[mesId],
+    firmado:true,
+    firma:img,
+    fechaFirma:hoy(),
+    horaFirma:ahora(),
+    firmadoPor:`${a.apellido}, ${a.nombre}`,   // firma el aspirante, no la usuaria
+    conHuella: state.firma.conHuella || false,
+    registradoPor: state.usuaria.nombre        // quién operó el sistema (para auditoría)
+  };
+  addAudit("Firma de aspirante", `${a.apellido}, ${a.nombre} · ${mesId}${state.firma.conHuella?" (con huella)":""}`, "sign");
   guardarAspiranteSupa(a);
   document.getElementById("modal-firma").style.display="none";
   renderContent();
 }
+function verFirma(aspId, mesId) {
+  const a = state.aspirantes.find(x=>x.id===aspId);
+  const mes = MESES.find(m=>m.id===mesId);
+  if (!a || !mes) return;
+  const p = a.pagos[mesId];
+  if (!p || !p.firma) { alert("No hay firma guardada para este registro."); return; }
+  const d = state.dark;
+  const card = d?"#1e293b":"#fff";
+  const bdr = d?"#334155":"#e2e8f0";
+  const txt = d?"#f1f5f9":"#1e293b";
+  const mut = d?"#94a3b8":"#64748b";
+  document.getElementById("modal-gen-content").innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <span style="font-weight:800;font-size:16px;color:${txt}">Comprobante de Firma</span>
+      <button onclick="closeModal()" style="background:none;border:none;font-size:20px;color:${mut};cursor:pointer">✕</button>
+    </div>
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:11px;padding:8px;margin-bottom:14px">
+      <img src="${p.firma}" alt="firma" style="width:100%;display:block;border-radius:6px"/>
+    </div>
+    <div style="font-size:13px;color:${txt};line-height:1.7">
+      <div><b>Aspirante:</b> ${a.apellido}, ${a.nombre}</div>
+      <div><b>DNI:</b> ${a.dni} · <b>Sección:</b> ${a.division}</div>
+      <div><b>Mes:</b> ${mes.label}</div>
+      <div><b>Fecha:</b> ${p.fechaFirma} a las ${p.horaFirma}</div>
+      ${p.conHuella?`<div style="color:#7c3aed"><b>✓ Confirmado con huella digital</b></div>`:""}
+      ${p.registradoPor?`<div style="font-size:11px;color:${mut};margin-top:4px">Registrado por: ${p.registradoPor}</div>`:""}
+    </div>
+    <div style="display:flex;justify-content:flex-end;margin-top:16px">
+      <button class="btn-pri" onclick="closeModal()">Cerrar</button>
+    </div>`;
+  document.getElementById("modal-gen").style.display = "flex";
+}
+
 function closeModal() {
   document.getElementById("modal-gen").style.display="none";
   document.getElementById("modal-gen-content").innerHTML="";
@@ -1004,6 +1270,24 @@ async function guardarAspiranteSupa(a) {
   } catch(err) { console.error(err); mostrarEstadoSync("⚠ No se pudo guardar", "#ef4444"); }
 }
 
+async function borrarAspiranteSupa(id) {
+  if (!supaOK) return;
+  try {
+    const { error } = await supa.from("aspirantes").delete().eq("id", id);
+    if (error) throw error;
+    mostrarEstadoSync("✓ Eliminado", "#10b981");
+  } catch(err) { console.error(err); mostrarEstadoSync("⚠ No se pudo eliminar", "#ef4444"); }
+}
+
+async function borrarGastoSupa(id) {
+  if (!supaOK) return;
+  try {
+    const { error } = await supa.from("gastos").delete().eq("id", id);
+    if (error) throw error;
+    mostrarEstadoSync("✓ Eliminado", "#10b981");
+  } catch(err) { console.error(err); mostrarEstadoSync("⚠ No se pudo eliminar", "#ef4444"); }
+}
+
 async function guardarGastoSupa(g) {
   if (!supaOK) return;
   try {
@@ -1024,6 +1308,109 @@ async function guardarAuditoriaSupa(log) {
       detalle:log.detalle, tipo:log.tipo, hora:log.hora
     });
   } catch(err) { console.error(err); }
+}
+
+// ╔══════════════════════════════════════════════════════════════════╗
+// ║  EXPORTACIÓN A PDF Y EXCEL                                         ║
+// ╚══════════════════════════════════════════════════════════════════╝
+function datosReporte(tipo) {
+  const activos = aspActivos();
+  if (tipo === "aspirantes") {
+    return {
+      titulo: "Listado de Aspirantes",
+      columnas: ["#","Apellido y Nombre","DNI","Sección","Estado"],
+      filas: state.aspirantes.map((a,i)=>[i+1, a.apellido+", "+a.nombre, a.dni, a.division, a.estado])
+    };
+  }
+  if (tipo === "becas") {
+    const cols = ["Apellido y Nombre","DNI","Sección"];
+    MESES.forEach(m => { cols.push(m.label+" Pago"); cols.push(m.label+" Firma"); });
+    const filas = state.aspirantes.map(a => {
+      const fila = [a.apellido+", "+a.nombre, a.dni, a.division];
+      MESES.forEach(m => {
+        const p = a.pagos[m.id];
+        fila.push(p?.pagado ? "PAGADO" : "Pendiente");
+        fila.push(p?.firmado ? "FIRMADO" : (p?.pagado ? "Sin firma" : "-"));
+      });
+      return fila;
+    });
+    return { titulo: "Reporte de Becas", columnas: cols, filas };
+  }
+  if (tipo === "gastos") {
+    return {
+      titulo: "Lista de Gastos",
+      columnas: ["Descripción","Categoría","Monto","Fecha","N° Factura","Registrado por"],
+      filas: state.gastos.map(g=>[g.desc, g.cat, "$"+g.monto.toLocaleString("es-AR"), g.fecha, g.factura||"-", g.creadoPor||"-"])
+    };
+  }
+  if (tipo === "financiero") {
+    const totalBecas = activos.length * 3 * 33000;
+    return {
+      titulo: "Reporte Financiero",
+      columnas: ["Concepto","Valor"],
+      filas: [
+        ["Beca mensual por aspirante", "$33.000"],
+        ["Aspirantes activos", String(activos.length)],
+        ["Total becas del período (3 meses)", "$"+totalBecas.toLocaleString("es-AR")],
+        ["Total recaudado (cobrado)", "$"+totalPagado().toLocaleString("es-AR")],
+        ["Total gastos", "$"+totalGastos().toLocaleString("es-AR")],
+        ["BALANCE", "$"+balance().toLocaleString("es-AR")]
+      ]
+    };
+  }
+  return { titulo:"Reporte", columnas:[], filas:[] };
+}
+
+function exportarPDF(tipo) {
+  try {
+    const d = datosReporte(tipo);
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF(d.columnas.length > 6 ? "landscape" : "portrait");
+    // Encabezado
+    doc.setFontSize(15);
+    doc.setTextColor(30,58,95);
+    doc.text("DCFyCCCO - Secretaría Académica", 14, 16);
+    doc.setFontSize(12);
+    doc.setTextColor(60,60,60);
+    doc.text(d.titulo, 14, 24);
+    doc.setFontSize(9);
+    doc.setTextColor(120,120,120);
+    doc.text("Generado: " + new Date().toLocaleString("es-AR"), 14, 30);
+    // Tabla
+    doc.autoTable({
+      head: [d.columnas],
+      body: d.filas,
+      startY: 35,
+      styles: { fontSize: 8, cellPadding: 2 },
+      headStyles: { fillColor: [30,58,95], textColor: 255, fontStyle: "bold" },
+      alternateRowStyles: { fillColor: [241,245,249] }
+    });
+    doc.save("DCFyCCCO_" + tipo + "_" + hoy() + ".pdf");
+    mostrarEstadoSync("✓ PDF descargado", "#10b981");
+  } catch(err) {
+    console.error("Error PDF:", err);
+    alert("No se pudo generar el PDF. Verificá tu conexión a internet (las librerías se cargan online).");
+  }
+}
+
+function exportarExcel(tipo) {
+  try {
+    const d = datosReporte(tipo);
+    const aoa = [d.columnas, ...d.filas];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    // Ancho de columnas automático aproximado
+    ws["!cols"] = d.columnas.map((c,i) => {
+      const maxLen = Math.max(c.length, ...d.filas.map(f => String(f[i]||"").length));
+      return { wch: Math.min(maxLen + 2, 40) };
+    });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, d.titulo.substring(0,28));
+    XLSX.writeFile(wb, "DCFyCCCO_" + tipo + "_" + hoy() + ".xlsx");
+    mostrarEstadoSync("✓ Excel descargado", "#10b981");
+  } catch(err) {
+    console.error("Error Excel:", err);
+    alert("No se pudo generar el Excel. Verificá tu conexión a internet (las librerías se cargan online).");
+  }
 }
 
 buildLoginButtons();
