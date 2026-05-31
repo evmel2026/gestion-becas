@@ -415,6 +415,53 @@ function renderContent() {
 }
 
 // ── DASHBOARD ──────────────────────────────────────────────────────
+function bloqueTotalesSeccion(card,bdr,txt,mut,bg2) {
+  const activos = aspActivos();
+  if (!activos.length) return "";
+  // Calcular por sección: cuántos pagaron todo, cuántos deben algo, monto recaudado
+  let filas = "";
+  let totGenPagados = 0, totGenParcial = 0, totGenDeben = 0, totGenMonto = 0, totGenAsp = 0;
+  SECCIONES.forEach(sec => {
+    const aspSec = activos.filter(a => a.division === sec);
+    if (!aspSec.length) return;
+    let pagadosTodo = 0, deben = 0, monto = 0;
+    aspSec.forEach(a => {
+      const cuotasPagadas = MESES.filter(m => a.pagos[m.id]?.pagado).length;
+      monto += cuotasPagadas * 33000;
+      if (cuotasPagadas === MESES.length) pagadosTodo++;
+      else deben++;
+    });
+    totGenPagados += pagadosTodo; totGenDeben += deben; totGenMonto += monto; totGenAsp += aspSec.length;
+    filas += `<tr>
+      <td style="font-weight:700;color:${txt}"><span style="background:#059669;color:#fff;padding:2px 9px;border-radius:6px;font-size:11px">Sección ${sec}</span></td>
+      <td style="text-align:center;color:${txt};font-weight:600">${aspSec.length}</td>
+      <td style="text-align:center"><span style="color:#10b981;font-weight:700">${pagadosTodo}</span></td>
+      <td style="text-align:center"><span style="color:#ef4444;font-weight:700">${deben}</span></td>
+      <td style="text-align:right;font-weight:700;color:#1d4ed8">${fmt(monto)}</td>
+    </tr>`;
+  });
+  return `<div style="background:${card};border-radius:14px;border:1px solid ${bdr};overflow:hidden;margin-bottom:20px">
+    <div style="padding:13px 16px;border-bottom:1px solid ${bdr};font-weight:700;color:${txt}">Totales por Sección</div>
+    <div style="overflow-x:auto"><table style="width:100%">
+      <thead><tr style="background:${bg2}">
+        <th style="color:${mut};text-align:left">Sección</th>
+        <th style="color:${mut};text-align:center">Aspirantes</th>
+        <th style="color:${mut};text-align:center">Pagaron todo</th>
+        <th style="color:${mut};text-align:center">Deben</th>
+        <th style="color:${mut};text-align:right">Recaudado</th>
+      </tr></thead>
+      <tbody>${filas}</tbody>
+      <tfoot><tr style="background:${bg2};border-top:2px solid ${bdr}">
+        <td style="font-weight:800;color:${txt}">TOTAL GENERAL</td>
+        <td style="text-align:center;font-weight:800;color:${txt}">${totGenAsp}</td>
+        <td style="text-align:center;font-weight:800;color:#10b981">${totGenPagados}</td>
+        <td style="text-align:center;font-weight:800;color:#ef4444">${totGenDeben}</td>
+        <td style="text-align:right;font-weight:800;color:#1d4ed8">${fmt(totGenMonto)}</td>
+      </tr></tfoot>
+    </table></div>
+  </div>`;
+}
+
 function renderDashboard(card,bdr,txt,mut,bg2) {
   const asp = state.aspirantes;
   const activos = aspActivos();
@@ -443,6 +490,7 @@ function renderDashboard(card,bdr,txt,mut,bg2) {
       ${puede("aspirantes")?`<button class="btn-pri" onclick="navigate('aspirantes')" style="font-size:14px">→ Ir a Aspirantes</button>`:""}
     </div>`;
   } else {
+    html += bloqueTotalesSeccion(card,bdr,txt,mut,bg2);
     html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
       <div style="background:${card};border-radius:14px;border:1px solid ${bdr};padding:18px">
         <div style="font-weight:700;font-size:14px;color:${txt};margin-bottom:14px">Estado por Mes</div>`;
@@ -550,6 +598,7 @@ function renderBecas(card,bdr,txt,mut,bg2) {
   });
   html += `</div>`;
   if (!state.aspirantes.length) return html + `<div style="background:${card};border-radius:14px;border:1px solid ${bdr};padding:40px;text-align:center;color:${mut}">Primero cargá aspirantes en la sección Aspirantes</div>`;
+  html += bloqueTotalesSeccion(card,bdr,txt,mut,bg2);
   html += `<div style="background:${card};border-radius:14px;border:1px solid ${bdr};overflow:hidden"><div style="overflow-x:auto">
     <table><thead>
       <tr style="background:${bg2}">
@@ -593,7 +642,6 @@ function renderGastos(card,bdr,txt,mut,bg2) {
   let html = `<div style="display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;align-items:center;justify-content:space-between">
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       ${puede("gasto")?`<button class="btn-pri" onclick="openModalGasto()" style="display:flex;align-items:center;gap:7px"><svg width="15" height="15" fill="none" stroke="#fff" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Nuevo Gasto</button>`:""}
-      ${puede("gasto")?`<button class="btn-sec" onclick="openEscaneo()" style="display:flex;align-items:center;gap:7px;border-color:${bdr};color:#7c3aed"><svg width="15" height="15" fill="none" stroke="#7c3aed" stroke-width="2" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg> Escanear Factura</button>`:""}
     </div>
     ${state.gastos.length?`<div style="font-weight:700;color:#ef4444;font-size:14px">Total: ${fmt(totalGastos())}</div>`:""}
   </div>
@@ -625,6 +673,7 @@ function renderGastos(card,bdr,txt,mut,bg2) {
         <td style="color:${mut};font-family:monospace;font-size:12px">${g.factura||"—"}</td>
         <td style="color:${mut};font-size:12px">${g.creadoPor}</td>
         <td><div style="display:flex;gap:5px;flex-wrap:wrap">
+          ${g.foto?`<button onclick="verFactura(${g.id})" style="padding:5px 10px;border-radius:7px;border:1px solid ${bdr};background:transparent;color:#7c3aed;font-size:11px;font-weight:700">Ver factura</button>`:""}
           ${puede("gasto")?`<button onclick="editarGasto(${g.id})" style="padding:5px 10px;border-radius:7px;border:1px solid ${bdr};background:transparent;color:#f59e0b;font-size:11px;font-weight:700">Editar</button>`:""}
           ${puedeBorrar()?`<button onclick="borrarGasto(${g.id})" style="padding:5px 10px;border-radius:7px;border:1px solid ${bdr};background:transparent;color:#ef4444;font-size:11px;font-weight:700">Borrar</button>`:""}
         </div></td>
@@ -809,6 +858,8 @@ function openModalAsp() {
     ${[["Apellido/s *","apellido","text","Ej: García López"],["Nombre/s *","nombre","text","Ej: Juan Pablo"],["DNI *","dni","text","Ej: 35123456"]].map(([l,k,t,p])=>`<label class="mlbl">${l}</label><input class="minp" id="masp-${k}" type="${t}" placeholder="${p}"/>`).join("")}
     <label class="mlbl">SECCIÓN *</label>
     <select class="minp" id="masp-div">${SECCIONES.map(s=>`<option value="${s}">Sección ${s}</option>`).join("")}</select>
+    <label class="mlbl">OBSERVACIÓN (opcional)</label>
+    <textarea class="minp" id="masp-obs" rows="2" placeholder="Nota general sobre el aspirante" style="resize:vertical"></textarea>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
       <button class="btn-sec" onclick="closeModal()">Cancelar</button>
       <button class="btn-pri" onclick="guardarAsp()">Guardar</button>
@@ -823,6 +874,7 @@ function guardarAsp() {
   if (!n||!ap||!dni) { alert("Completá todos los campos obligatorios"); return; }
   if (state.aspirantes.find(a=>a.dni===dni)) { alert("Ya existe un aspirante con ese DNI"); return; }
   const nuevo = {id:Date.now(), nombre:n, apellido:ap, dni, division:div, estado:"Activo",
+    observacion: document.getElementById("masp-obs")?.value.trim() || "",
     pagos:{mayo:{pagado:false,firmado:false},junio:{pagado:false,firmado:false},julio:{pagado:false,firmado:false}}};
   state.aspirantes.push(nuevo);
   addAudit("Alta aspirante", `${ap}, ${n} · DNI ${dni}`, "add");
@@ -856,6 +908,8 @@ function editarAspirante(aspId) {
       <option value="Activo" ${a.estado==="Activo"?"selected":""}>Activo</option>
       <option value="Inactivo" ${a.estado==="Inactivo"?"selected":""}>Inactivo</option>
     </select>
+    <label class="elbl">OBSERVACIÓN</label>
+    <textarea class="einp" id="easp-obs" rows="2" placeholder="Nota general sobre el aspirante" style="resize:vertical">${a.observacion||""}</textarea>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
       <button class="btn-sec" onclick="closeModal()">Cancelar</button>
       <button class="btn-pri" onclick="guardarEdicionAsp(${aspId})">Guardar Cambios</button>
@@ -875,6 +929,7 @@ function guardarEdicionAsp(aspId) {
   // Verificar que el DNI no esté repetido en OTRO aspirante
   if (state.aspirantes.find(x=>x.dni===dni && x.id!==aspId)) { alert("Ya existe otro aspirante con ese DNI"); return; }
   a.apellido = ap; a.nombre = n; a.dni = dni; a.division = div; a.estado = estado;
+  a.observacion = document.getElementById("easp-obs")?.value.trim() || "";
   addAudit("Editó aspirante", `${ap}, ${n} · DNI ${dni}`, "edit");
   guardarAspiranteSupa(a);
   closeModal();
@@ -913,6 +968,7 @@ function openDetalle(aspId) {
       <span style="color:${mut}">Secc.: <b style="color:#059669">${a.division}</b></span>
       <span style="background:${a.estado==="Activo"?"#10b98120":"#ef444420"};color:${a.estado==="Activo"?"#10b981":"#ef4444"};padding:2px 9px;border-radius:6px;font-size:11px;font-weight:700">${a.estado}</span>
     </div>
+    ${a.observacion?`<div style="margin-top:10px;padding:9px 11px;background:${d?"rgba(245,158,11,.12)":"#fef3c7"};border-radius:8px;font-size:12px;color:${d?"#fcd34d":"#92400e"}"><b>Observación:</b> ${a.observacion}</div>`:""}
   </div>
   <div style="font-weight:700;color:${txt};margin-bottom:10px">Historial por Mes</div>`;
   MESES.forEach(m => {
@@ -923,6 +979,8 @@ function openDetalle(aspId) {
         <div style="font-size:11px;color:${mut};margin-top:2px">Beca mensual: $33.000</div>
         ${p?.fechaFirma?`<div style="font-size:11px;color:#7c3aed;margin-top:2px">Firmado ${p.fechaFirma} ${p.horaFirma}</div>`:""}
         ${p?.firma?`<button onclick="verFirma(${aspId},'${m.id}')" style="margin-top:4px;padding:3px 10px;border-radius:6px;border:1px solid #7c3aed;background:transparent;color:#7c3aed;font-size:10px;font-weight:700">Ver firma</button>`:""}
+        ${p?.obs?`<div style="font-size:11px;color:${d?"#fcd34d":"#92400e"};margin-top:4px;background:${d?"rgba(245,158,11,.12)":"#fef3c7"};padding:4px 8px;border-radius:6px">📝 ${p.obs}</div>`:""}
+        <button onclick="editarObsMes(${aspId},'${m.id}')" style="margin-top:4px;padding:3px 10px;border-radius:6px;border:1px solid ${bdr};background:transparent;color:${mut};font-size:10px;font-weight:700">${p?.obs?"Editar obs.":"+ Observación"}</button>
       </div>
       <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
         <span style="font-size:10px;padding:3px 8px;border-radius:5px;background:${p?.pagado?"#10b98120":"#ef444420"};color:${p?.pagado?"#10b981":"#ef4444"};font-weight:700">${p?.pagado?"✓ PAGADO":"PENDIENTE"}</span>
@@ -932,6 +990,21 @@ function openDetalle(aspId) {
   });
   document.getElementById("modal-gen-content").innerHTML = html;
   document.getElementById("modal-gen").style.display = "flex";
+}
+
+// ── OBSERVACIÓN POR MES ──
+function editarObsMes(aspId, mesId) {
+  const a = state.aspirantes.find(x=>x.id===aspId);
+  const mes = MESES.find(m=>m.id===mesId);
+  if (!a || !mes) return;
+  const actual = a.pagos[mesId]?.obs || "";
+  const nueva = prompt(`Observación para ${a.apellido}, ${a.nombre} — ${mes.label}\n(Ej: "No pagó este mes", "Pagó con cheque", etc.)\n\nDejá vacío para borrar la observación.`, actual);
+  if (nueva === null) return;  // canceló
+  a.pagos[mesId] = {...a.pagos[mesId], obs: nueva.trim()};
+  addAudit("Observación de mes", `${a.apellido}, ${a.nombre} · ${mesId}`, "edit");
+  guardarAspiranteSupa(a);
+  // Reabrir la ficha para ver el cambio
+  openDetalle(aspId);
 }
 
 // ── MODAL GASTO ──────────────────────────────────────────────────
@@ -955,18 +1028,56 @@ function openModalGasto(preData) {
     <label class="glbl">Categoría</label>
     <select class="ginp" id="mg-cat">${CATEGORIAS.map(c=>`<option value="${c}" ${pre.cat===c?"selected":""}>${c}</option>`).join("")}</select>
     <label class="glbl">Notas</label><input class="ginp" id="mg-notas" placeholder="Opcional"/>
+    <label class="glbl">FOTO DE LA FACTURA (opcional)</label>
+    <div onclick="document.getElementById('mg-foto').click()" id="mg-foto-zona" style="border:2px dashed ${bdr};border-radius:9px;padding:18px;text-align:center;cursor:pointer;background:${bg2};margin-bottom:12px">
+      <svg width="28" height="28" fill="none" stroke="#7c3aed" stroke-width="2" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      <div style="margin-top:6px;color:${mut};font-size:12px">Tocá para sacar o subir foto de la factura</div>
+    </div>
+    <input id="mg-foto" type="file" accept="image/*" capture="environment" style="display:none" onchange="previsualizarFoto(this)"/>
+    <div id="mg-foto-preview" style="display:none;margin-bottom:12px;text-align:center"></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
       <button class="btn-sec" onclick="closeModal()">Cancelar</button>
       <button class="btn-pri" onclick="guardarGasto()">Guardar Gasto</button>
     </div>`;
   document.getElementById("modal-gen").style.display = "flex";
+  window._fotoFactura = null;  // reiniciar la foto al abrir
 }
+
+// Comprime y previsualiza la foto de la factura
+function previsualizarFoto(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const img = new Image();
+    img.onload = () => {
+      // Comprimir: máximo 1000px de ancho, calidad 70%
+      const maxW = 1000;
+      const escala = Math.min(1, maxW / img.width);
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width * escala;
+      canvas.height = img.height * escala;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      window._fotoFactura = canvas.toDataURL("image/jpeg", 0.7);
+      // Mostrar previsualización
+      const prev = document.getElementById("mg-foto-preview");
+      prev.style.display = "block";
+      prev.innerHTML = `<img src="${window._fotoFactura}" style="max-width:100%;max-height:160px;border-radius:8px;border:1px solid #e2e8f0"/><div style="font-size:11px;color:#10b981;margin-top:4px;font-weight:600">✓ Foto lista para guardar</div>`;
+      document.getElementById("mg-foto-zona").style.display = "none";
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
 function guardarGasto() {
   const desc = document.getElementById("mg-desc")?.value.trim();
   const monto = Number(document.getElementById("mg-monto")?.value);
   const fecha = document.getElementById("mg-fecha")?.value;
   if (!desc||!monto||!fecha) { alert("Completá los campos obligatorios"); return; }
-  const nuevo = {id:Date.now(), desc, monto, fecha, cat:document.getElementById("mg-cat").value, factura:document.getElementById("mg-factura").value.trim(), notas:document.getElementById("mg-notas").value.trim(), creadoPor:state.usuaria.nombre, creadoEn:new Date().toISOString()};
+  const nuevo = {id:Date.now(), desc, monto, fecha, cat:document.getElementById("mg-cat").value, factura:document.getElementById("mg-factura").value.trim(), notas:document.getElementById("mg-notas").value.trim(), foto:window._fotoFactura||null, creadoPor:state.usuaria.nombre, creadoEn:new Date().toISOString()};
+  window._fotoFactura = null;
   state.gastos.push(nuevo);
   addAudit("Gasto registrado", `${fmt(monto)} · ${nuevo.cat}`, "expense");
   guardarGastoSupa(nuevo);
@@ -995,11 +1106,39 @@ function editarGasto(gastoId) {
     <label class="eglbl">N° Factura</label><input class="eginp" id="eg-factura" value="${(g.factura||'').replace(/"/g,'&quot;')}"/>
     <label class="eglbl">Categoría</label>
     <select class="eginp" id="eg-cat">${CATEGORIAS.map(c=>`<option value="${c}" ${g.cat===c?"selected":""}>${c}</option>`).join("")}</select>
+    <label class="eglbl">FOTO DE LA FACTURA</label>
+    <div id="eg-foto-preview" style="margin-bottom:10px;text-align:center">${g.foto?`<img src="${g.foto}" style="max-width:100%;max-height:140px;border-radius:8px;border:1px solid ${bdr}"/>`:`<span style="font-size:12px;color:${mut}">Sin foto adjunta</span>`}</div>
+    <div onclick="document.getElementById('eg-foto').click()" style="border:2px dashed ${bdr};border-radius:9px;padding:12px;text-align:center;cursor:pointer;background:${bg2};margin-bottom:12px;font-size:12px;color:#7c3aed;font-weight:600">${g.foto?"Cambiar foto":"Agregar foto"}</div>
+    <input id="eg-foto" type="file" accept="image/*" capture="environment" style="display:none" onchange="previsualizarFotoEdit(this)"/>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
       <button class="btn-sec" onclick="closeModal()">Cancelar</button>
       <button class="btn-pri" onclick="guardarEdicionGasto(${gastoId})">Guardar Cambios</button>
     </div>`;
   document.getElementById("modal-gen").style.display = "flex";
+  window._fotoFacturaEdit = undefined;  // undefined = no se cambió; null = se quitó; string = nueva
+}
+
+// Comprime la nueva foto al editar
+function previsualizarFotoEdit(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const img = new Image();
+    img.onload = () => {
+      const maxW = 1000;
+      const escala = Math.min(1, maxW / img.width);
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width * escala;
+      canvas.height = img.height * escala;
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+      window._fotoFacturaEdit = canvas.toDataURL("image/jpeg", 0.7);
+      const prev = document.getElementById("eg-foto-preview");
+      prev.innerHTML = `<img src="${window._fotoFacturaEdit}" style="max-width:100%;max-height:140px;border-radius:8px;border:1px solid #e2e8f0"/><div style="font-size:11px;color:#10b981;margin-top:4px;font-weight:600">✓ Nueva foto lista</div>`;
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
 }
 
 function guardarEdicionGasto(gastoId) {
@@ -1012,6 +1151,8 @@ function guardarEdicionGasto(gastoId) {
   g.desc = desc; g.monto = monto; g.fecha = fecha;
   g.factura = document.getElementById("eg-factura").value.trim();
   g.cat = document.getElementById("eg-cat").value;
+  if (window._fotoFacturaEdit !== undefined) g.foto = window._fotoFacturaEdit;  // se cambió la foto
+  window._fotoFacturaEdit = undefined;
   addAudit("Editó gasto", `${fmt(monto)} · ${g.cat}`, "edit");
   guardarGastoSupa(g);
   closeModal();
@@ -1029,48 +1170,6 @@ function borrarGasto(gastoId) {
   addAudit("Borró gasto", `${g.desc} · ${fmt(g.monto)}`, "delete");
   borrarGastoSupa(gastoId);
   renderContent();
-}
-
-// ── ESCANEO ──────────────────────────────────────────────────────
-function openEscaneo() {
-  const d = state.dark;
-  const bdr = d?"#334155":"#e2e8f0";
-  const txt = d?"#f1f5f9":"#1e293b";
-  const mut = d?"#94a3b8":"#64748b";
-  const bg2 = d?"#0f172a":"#f8fafc";
-  document.getElementById("modal-gen-content").innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
-      <span style="font-weight:800;font-size:15px;color:${txt}">Escaneo Inteligente de Factura</span>
-      <button onclick="closeModal()" style="background:none;border:none;font-size:20px;color:${mut};cursor:pointer">✕</button>
-    </div>
-    <div onclick="document.getElementById('scan-file').click()" style="border:2px dashed ${bdr};border-radius:12px;padding:40px;text-align:center;cursor:pointer;background:${bg2}" id="scan-drop">
-      <svg width="44" height="44" fill="none" stroke="#7c3aed" stroke-width="2" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-      <div style="margin-top:12px;color:${mut};font-size:14px">Tocá aquí para subir imagen o PDF</div>
-      <input id="scan-file" type="file" accept="image/*,.pdf" style="display:none" onchange="procesarEscaneo(this)"/>
-    </div>
-    <div id="scan-result"></div>`;
-  document.getElementById("modal-gen").style.display = "flex";
-}
-function procesarEscaneo(input) {
-  const file = input.files[0];
-  if (!file) return;
-  const d = state.dark;
-  const txt = d?"#f1f5f9":"#1e293b";
-  const mut = d?"#94a3b8":"#64748b";
-  document.getElementById("scan-drop").style.display="none";
-  document.getElementById("scan-result").innerHTML = `<div style="text-align:center;padding:36px"><div style="width:52px;height:52px;border:4px solid #e2e8f0;border-top-color:#7c3aed;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 14px"></div><div style="color:${mut}">Analizando con IA…</div></div>`;
-  setTimeout(() => {
-    const r = {desc:"Proveedor detectado S.A.", cat:"Insumos", monto:Math.floor(Math.random()*80000+5000), fecha:hoy(), factura:`0001-${String(Math.floor(Math.random()*99999)+1).padStart(8,"0")}`};
-    document.getElementById("scan-result").innerHTML = `
-      <div style="background:#f0fdf4;border:1.5px solid #22c55e;border-radius:10px;padding:14px;margin-top:16px">
-        <div style="color:#22c55e;font-weight:700;font-size:12px;margin-bottom:10px">✓ Datos extraídos con IA</div>
-        ${[["Comercio",r.desc],["N° Factura",r.factura],["Fecha",r.fecha],["Monto",fmt(r.monto)],["Categoría",r.cat]].map(([k,v])=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #d1fae5;font-size:13px"><span style="color:#374151">${k}</span><span style="font-weight:700;color:#111">${v}</span></div>`).join("")}
-      </div>
-      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
-        <button class="btn-sec" onclick="closeModal()">Cancelar</button>
-        <button class="btn-pri" onclick="closeModal();openModalGasto(${JSON.stringify(r).replace(/"/g,"'")})">Usar estos datos →</button>
-      </div>`;
-  }, 2200);
 }
 
 // ── FIRMA DIGITAL ──────────────────────────────────────────────────
@@ -1172,6 +1271,30 @@ function confirmarFirma() {
   document.getElementById("modal-firma").style.display="none";
   renderContent();
 }
+function verFactura(gastoId) {
+  const g = state.gastos.find(x=>x.id===gastoId);
+  if (!g || !g.foto) { alert("Este gasto no tiene factura adjunta."); return; }
+  const d = state.dark;
+  const txt = d?"#f1f5f9":"#1e293b";
+  const mut = d?"#94a3b8":"#64748b";
+  document.getElementById("modal-gen-content").innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <span style="font-weight:800;font-size:16px;color:${txt}">Factura del Gasto</span>
+      <button onclick="closeModal()" style="background:none;border:none;font-size:20px;color:${mut};cursor:pointer">✕</button>
+    </div>
+    <div style="font-size:13px;color:${txt};margin-bottom:12px">
+      <b>${g.desc}</b> — ${fmt(g.monto)}<br>
+      <span style="font-size:12px;color:${mut}">${g.cat} · ${g.fecha}${g.factura?" · N° "+g.factura:""}</span>
+    </div>
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:11px;padding:8px;text-align:center">
+      <img src="${g.foto}" alt="factura" style="max-width:100%;border-radius:6px"/>
+    </div>
+    <div style="display:flex;justify-content:flex-end;margin-top:16px">
+      <button class="btn-pri" onclick="closeModal()">Cerrar</button>
+    </div>`;
+  document.getElementById("modal-gen").style.display = "flex";
+}
+
 function verFirma(aspId, mesId) {
   const a = state.aspirantes.find(x=>x.id===aspId);
   const mes = MESES.find(m=>m.id===mesId);
@@ -1241,11 +1364,12 @@ async function cargarDesdeSupabase() {
 
     state.aspirantes = (asp||[]).map(a => ({
       id:a.id, nombre:a.nombre, apellido:a.apellido, dni:a.dni,
-      division:a.division, estado:a.estado, pagos:a.pagos||{mayo:{pagado:false,firmado:false},junio:{pagado:false,firmado:false},julio:{pagado:false,firmado:false}}
+      division:a.division, estado:a.estado, observacion:a.observacion||"",
+      pagos:a.pagos||{mayo:{pagado:false,firmado:false},junio:{pagado:false,firmado:false},julio:{pagado:false,firmado:false}}
     }));
     state.gastos = (gas||[]).map(g => ({
       id:g.id, desc:g.descripcion, cat:g.categoria, monto:Number(g.monto),
-      fecha:g.fecha, factura:g.factura, notas:g.notas, creadoPor:g.creado_por
+      fecha:g.fecha, factura:g.factura, notas:g.notas, foto:g.foto||null, creadoPor:g.creado_por
     }));
     state.auditoria = (aud||[]).map(a => ({
       id:a.id, usuaria:a.usuaria, accion:a.accion, detalle:a.detalle, tipo:a.tipo, hora:a.hora
@@ -1263,7 +1387,7 @@ async function guardarAspiranteSupa(a) {
   try {
     const { error } = await supa.from("aspirantes").upsert({
       id:a.id, nombre:a.nombre, apellido:a.apellido, dni:a.dni,
-      division:a.division, estado:a.estado, pagos:a.pagos
+      division:a.division, estado:a.estado, observacion:a.observacion||"", pagos:a.pagos
     });
     if (error) throw error;
     mostrarEstadoSync("✓ Guardado", "#10b981");
@@ -1293,7 +1417,7 @@ async function guardarGastoSupa(g) {
   try {
     const { error } = await supa.from("gastos").upsert({
       id:g.id, descripcion:g.desc, categoria:g.cat, monto:g.monto,
-      fecha:g.fecha, factura:g.factura, notas:g.notas, creado_por:g.creadoPor
+      fecha:g.fecha, factura:g.factura, notas:g.notas, foto:g.foto||null, creado_por:g.creadoPor
     });
     if (error) throw error;
     mostrarEstadoSync("✓ Guardado", "#10b981");
