@@ -201,15 +201,18 @@ const MESES = [
   {id:"junio", label:"Junio 2026", monto:33000},
   {id:"julio", label:"Julio 2026", monto:33000}
 ];
-const CATEGORIAS = ["Reparaciones","Insumos","Limpieza","Equipamiento","Capacitación","Otros"];
-const CAT_COLORS = {Reparaciones:"#ef4444",Insumos:"#f59e0b",Limpieza:"#06b6d4",Equipamiento:"#8b5cf6",Capacitación:"#10b981",Otros:"#64748b"};
+const CATEGORIAS = ["Reparaciones","Insumos","Limpieza","Equipamiento","Bienes Materiales","Capacitación","Otros"];
+const CAT_COLORS = {Reparaciones:"#ef4444",Insumos:"#f59e0b",Limpieza:"#06b6d4",Equipamiento:"#8b5cf6","Bienes Materiales":"#0ea5e9",Capacitación:"#10b981",Otros:"#64748b"};
 const ROLES = {
   jefa:       {label:"Jefa Secretaria Académica", color:"#065f46"},
   secretaria: {label:"Secretaria Académica",       color:"#1e3a5f"}
 };
+// ⚠️ Las contraseñas reales se cargan desde Supabase (tabla "credenciales").
+// Estos valores son solo de respaldo inicial. NO uses contraseñas reales acá:
+// el repositorio es público y cualquiera podría verlas.
 const USUARIAS = [
-  {id:1, nombre:"Eliana Velázquez", rol:"jefa",       pass:"jefa2025"},
-  {id:2, nombre:"Melina La Fuente", rol:"secretaria", pass:"melina2025"}
+  {id:1, nombre:"Eliana Velázquez", rol:"jefa",       pass:"cambiar-en-supabase-1"},
+  {id:2, nombre:"Melina La Fuente", rol:"secretaria", pass:"cambiar-en-supabase-2"}
 ];
 const SECCIONES = ["1","2","3","4","5"];
 
@@ -327,6 +330,7 @@ function initApp() {
   buildNav();
   navigate("dashboard");
   cargarDesdeSupabase();
+  suscribirRealtime();
 }
 
 // ── NAV ──────────────────────────────────────────────────────────────
@@ -1433,8 +1437,42 @@ async function cargarDesdeSupabase() {
   }
 }
 
+// ── REALTIME: sincronización en vivo entre dispositivos ─────────────────
+let canalRealtime = null;
+function suscribirRealtime() {
+  if (!supaOK || canalRealtime) return;
+  // Cuando otra persona (ej: Eliana) cambia algo, recargamos los datos.
+  // Si justo estás guardando vos, la bandera evita que te pise la pantalla;
+  // se reintenta poco después para que igual veas el cambio entrante.
+  const alCambiar = () => {
+    if (guardandoLocal) {
+      clearTimeout(window._reintentoRT);
+      window._reintentoRT = setTimeout(alCambiar, 1500);
+      return;
+    }
+    cargarDesdeSupabase();
+  };
+  canalRealtime = supa
+    .channel("cambios-saep")
+    .on("postgres_changes", { event: "*", schema: "public", table: "aspirantes" }, alCambiar)
+    .on("postgres_changes", { event: "*", schema: "public", table: "gastos" }, alCambiar)
+    .subscribe();
+}
+
+// ── ANTI-COLISIÓN ───────────────────────────────────────────────────────
+// Mientras esta bandera esté activa, el Realtime NO recarga la pantalla,
+// para que un cambio entrante no pise lo que estás guardando en ese momento.
+let guardandoLocal = false;
+function marcarGuardando() {
+  guardandoLocal = true;
+  clearTimeout(window._guardandoT);
+  // Liberamos la pausa unos segundos después del último guardado.
+  window._guardandoT = setTimeout(() => { guardandoLocal = false; }, 4000);
+}
+
 async function guardarAspiranteSupa(a) {
   if (!supaOK) return;
+  marcarGuardando();
   try {
     const { error } = await supa.from("aspirantes").upsert({
       id:a.id, nombre:a.nombre, apellido:a.apellido, dni:a.dni,
@@ -1447,6 +1485,7 @@ async function guardarAspiranteSupa(a) {
 
 async function borrarAspiranteSupa(id) {
   if (!supaOK) return;
+  marcarGuardando();
   try {
     const { error } = await supa.from("aspirantes").delete().eq("id", id);
     if (error) throw error;
@@ -1456,6 +1495,7 @@ async function borrarAspiranteSupa(id) {
 
 async function borrarGastoSupa(id) {
   if (!supaOK) return;
+  marcarGuardando();
   try {
     const { error } = await supa.from("gastos").delete().eq("id", id);
     if (error) throw error;
@@ -1465,6 +1505,7 @@ async function borrarGastoSupa(id) {
 
 async function guardarGastoSupa(g) {
   if (!supaOK) return;
+  marcarGuardando();
   try {
     const { error } = await supa.from("gastos").upsert({
       id:g.id, descripcion:g.desc, categoria:g.cat, monto:g.monto,
@@ -1480,7 +1521,8 @@ async function guardarAuditoriaSupa(log) {
   try {
     await supa.from("auditoria").insert({
       id:log.id, usuaria:log.usuaria, accion:log.accion,
-      detalle:log.detalle, tipo:log.tipo, hora:log.hora
+      detalle:log.detalle, tipo:log.tipo, hora:log.hora,
+      creado_en: new Date().toISOString()
     });
   } catch(err) { console.error(err); }
 }
